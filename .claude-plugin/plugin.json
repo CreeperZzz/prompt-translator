@@ -1,0 +1,6 @@
+{
+  "name": "prompt-translator",
+  "version": "1.0.0",
+  "description": "Three icon buttons above the prompt box: translate between Chinese and English and polish, translate only, or polish in place with the conversation as context.",
+  "types": "./types/index.d.ts"
+}
