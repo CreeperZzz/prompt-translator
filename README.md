@@ -11,6 +11,18 @@ Three icon buttons in the row above the Claude Code prompt box. Each one rewrite
 
 Code, commands, file paths, URLs, identifiers and error messages are kept as written. If you keep typing while a rewrite runs, the result is discarded instead of overwriting your text.
 
+## First message of a new session
+
+The icon row appears only after a session's first reply. For the first message, type a slash command with your draft after it; the rewrite goes into the prompt box (nothing is sent) for you to check and send:
+
+| Command | Same as |
+|---|---|
+| `/tr <draft>` | `文⇄A✦` translate 中⇄EN and polish |
+| `/tr-only <draft>` | `文⇄A` translate and fix grammar only |
+| `/polish <draft>` | `✦` polish in the same language |
+
+If the prompt box can't be filled, the rewritten text is shown instead, to copy.
+
 ## Install
 
 At the prompt of a Claude Code terminal session:

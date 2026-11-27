@@ -150,3 +150,30 @@ test('three icons are always shown in fixed order and each runs its own mode', a
   expect(await texts()).toEqual(['文⇄A✦', '文⇄A', '✦'])
   await ui.unmount()
 })
+
+test('/tr rewrites the text after it into the prompt box without sending', async ($, on) => {
+  let draft = ''
+  on('command.register', () => ({ value: { command: 'tr' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('prompt.fill', (_, e) => {
+    draft = e.text
+    return { isFilled: true }
+  })
+  on('model.complete', () => ({ value: { isAnswered: true, text: '<result>Please fix the login bug.</result>', usage: { input_tokens: 1, output_tokens: 1 } } } as const))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ran = await $.command.run({ command: 'tr', args: '帮我修复登录的bug' })
+  expect(draft).toBe('Please fix the login bug.')
+  expect(JSON.stringify(ran)).toContain('prompt box')
+})
+
+test('/tr shows the result to copy when the box cannot be filled', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'tr' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('prompt.fill', () => ({ isFilled: false }))
+  on('model.complete', () => ({ value: { isAnswered: true, text: '<result>Please fix the login bug.</result>', usage: { input_tokens: 1, output_tokens: 1 } } } as const))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ran = await $.command.run({ command: 'tr', args: '帮我修复登录的bug' })
+  expect(JSON.stringify(ran)).toContain('Please fix the login bug.')
+})

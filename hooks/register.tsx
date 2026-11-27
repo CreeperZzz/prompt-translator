@@ -74,6 +74,15 @@ function clean(text: string): string {
   return fenced?.[1]?.trim() ?? t
 }
 
+type Rewritten = { result: string } | { error: string }
+
+async function rewriteText($: EngineInterface, m: Mode, text: string): Promise<Rewritten> {
+  const r = m === 'refine' ? await refine($, text) : await translate($, text, m)
+  if (!r.isAnswered) return { error: r.reason === 'aborted' ? 'Rewrite timed out' : `Rewrite failed (${r.reason})` }
+  const result = clean(r.text)
+  return result === '' ? { error: 'Rewrite came back empty' } : { result }
+}
+
 async function rewrite($: EngineInterface, m: Mode): Promise<void> {
   if ((await read($, status)) === 'working') return
 
@@ -86,18 +95,12 @@ async function rewrite($: EngineInterface, m: Mode): Promise<void> {
   await update($, mode, () => m)
   await update($, status, () => 'working')
   try {
-    const r = m === 'refine' ? await refine($, text) : await translate($, text, m)
-
-    if (!r.isAnswered) {
-      $.ui.toast(r.reason === 'aborted' ? 'Rewrite timed out' : `Rewrite failed (${r.reason})`)
+    const out = await rewriteText($, m, text)
+    if ('error' in out) {
+      $.ui.toast(out.error)
       return
     }
-
-    const result = clean(r.text)
-    if (result === '') {
-      $.ui.toast('Rewrite came back empty')
-      return
-    }
+    const result = out.result
 
     // Don't clobber anything typed while the call ran.
     const now = await $.prompt.read()
@@ -144,6 +147,22 @@ async function refine($: EngineInterface, text: string) {
   })
 }
 
+async function runCommand($: EngineInterface, m: Mode, args: string) {
+  const text = args.trim()
+  if (text === '') return { text: `Type your draft after the command, e.g. /${COMMANDS.find(c => c.mode === m)?.name} 帮我修复登录页面的 bug`, isTextDisplayOnly: true as const }
+
+  const out = await rewriteText($, m, text)
+  if ('error' in out) return { text: out.error, isTextDisplayOnly: true as const }
+
+  const filled = await $.prompt.fill({ text: out.result, mode: 'replace' }).catch(() => ({ isFilled: false }))
+  if (filled.isFilled) {
+    await update($, original, () => text)
+    return { text: 'Rewritten into the prompt box. Check it, then send.', isTextDisplayOnly: true as const }
+  }
+  // The box could not be filled: show the result to copy instead.
+  return { text: out.result, isTextDisplayOnly: true as const }
+}
+
 async function undo($: EngineInterface): Promise<void> {
   const prev = await read($, original)
   if (prev === null) return
@@ -151,7 +170,29 @@ async function undo($: EngineInterface): Promise<void> {
   if (filled.isFilled) await update($, original, () => null)
 }
 
+// Slash commands for a session's first message, before the icon row is drawn:
+// `/tr <draft>` rewrites the draft without sending it, and puts the result
+// back in the prompt box to check and send.
+const COMMANDS: readonly { name: string; mode: Mode; description: string }[] = [
+  { name: 'tr', mode: 'polish', description: '文⇄A✦ Translate 中⇄EN and polish the text after it, into the prompt box' },
+  { name: 'tr-only', mode: 'translate', description: '文⇄A Translate 中⇄EN and fix grammar only, into the prompt box' },
+  { name: 'polish', mode: 'refine', description: '✦ Polish the text after it in its own language, into the prompt box' },
+]
+
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    for (const c of COMMANDS) {
+      await $.command
+        .register({ name: c.name, description: c.description, argumentHint: '<your draft>' })
+        .catch(() => undefined)
+    }
+    return next(e)
+  })
+
+  for (const c of COMMANDS) {
+    on('command.run', { command: c.name }, async ($, e) => runCommand($, c.mode, e.args))
+  }
+
   on('prompt.submit', async ($, e, next) => {
     await update($, original, () => null).catch(() => undefined)
     return next(e)
